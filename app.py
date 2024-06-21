@@ -1,43 +1,48 @@
-from flask import Flask, request, url_for, redirect, render_template
-import joblib
+from flask import Flask, request, jsonify, render_template
 import numpy as np
+import pickle
 
 app = Flask(__name__)
 
-app.config["SECRET_KEY"] = 'abd3e6fb8a9854dd92a30cfc6dab510d'
-clf = joblib.load(r'D:\Notes\ML Web\heart_log_regr.sav')
+# Load the trained logistic regression model
+with open('heart_log_regr.sav', 'rb') as model_file:
+    lgr_model = pickle.load(model_file)
 
+# Load the scaler used during training
+with open('scaler.sav', 'rb') as scaler_file:
+    scaler = pickle.load(scaler_file)
+
+def predict_heart_disease(input_data):
+    # Scale the input data using the loaded scaler
+    input_data_scaled = scaler.transform(input_data)
+    
+    # Make a prediction using the logistic regression model
+    prediction = lgr_model.predict(input_data_scaled)
+    
+    # Return the prediction (1 = heart disease, 0 = no heart disease)
+    return prediction[0]
 
 @app.route('/')
-def hello_world():
-    return render_template("Home.html")
+def home():
+    return render_template('index.html')
 
-
-@app.route('/about')
-def about():
-    return render_template("aboutus.html", title='About Us')
-
-
-@app.route('/project')
-def project():
-    return render_template("Project.html", title='Check Heart health')
-
-
-@app.route('/predict', methods=['POST', 'GET'])
+@app.route('/predict', methods=['POST'])
 def predict():
-    int_features = [float(x) for x in request.form.values()]
-    final = [np.array(int_features)]
-    print(int_features)
-    print(final)
-    prediction = clf.predict_proba(final)
-    print(prediction)
-    output = '{0:.{1}f}'.format(prediction[0][1], 2)
+    # Get JSON data from the request
+    data = request.get_json(force=True)
+    
+    # Extract features from the JSON data
+    features = [
+        data['age'], data['sex'], data['cp'], data['trestbps'],
+        data['chol'], data['fbs'], data['restecg'], data['thalach'],
+        data['exang'], data['oldpeak'], data['slope'], data['ca'], data['thal']
+    ]
+    input_data = np.array([features])
+    
+    # Predict heart disease
+    prediction = predict_heart_disease(input_data)
+    
+    return jsonify({'prediction': int(prediction)})
 
-    if output > str(0.5):
-        return render_template('Project.html', pred='Your Heart is in Danger.\nProbability of heart disease is {}'.format(output), res="Do consult a doctor!!")
-    else:
-        return render_template('Project.html', pred='Your Heart is safe.\n Probability of heart disease is {}'.format(output), res="Eat safe and be healthy..")
-
-
-if __name__ == '__main__':
+if __name__ == "__main__":
     app.run(debug=True)
